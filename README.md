@@ -1,31 +1,67 @@
-# Tspproject
-# 🗺️ Travelling Salesman City-Tour Optimizer
+from math import radians, sin, cos, sqrt, atan2
 
-Optimize your city tour using geodesic math and classic TSP heuristics. This Python project reads a list of landmarks from a CSV file, calculates distances using the Haversine formula, and generates the shortest possible route using Greedy and 2-opt algorithms. The final route is exported as a GeoJSON file for easy visualization in Google Maps.
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371  # Earth radius in km
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
+    return R * 2 * atan2(sqrt(a), sqrt(1 - a))
+def greedy_tour(dist_matrix, start_index):
+    n = len(dist_matrix)
+    visited = [False] * n
+    path = [start_index]
+    visited[start_index] = True
 
----
+    for _ in range(n - 1):
+        last = path[-1]
+        next_city = min((i for i in range(n) if not visited[i]), key=lambda i: dist_matrix[last][i])
+        path.append(next_city)
+        visited[next_city] = True
 
-## 🚀 Features
+    return path
 
-- Parse CSV files with location data
-- Compute geodesic distances using the Haversine formula
-- Solve the Travelling Salesman Problem using:
-  - Greedy nearest-neighbor heuristic
-  - 2-opt optimization
-- Export optimized route as GeoJSON
-- Command-line interface for flexible usage
-- Optional Matplotlib visualization
-- Bonus: Simulated Annealing (experimental)
+def two_opt(path, dist_matrix):
+    improved = True
+    while improved:
+        improved = False
+        for i in range(1, len(path) - 2):
+            for j in range(i + 1, len(path)):
+                if j - i == 1: continue
+                new_path = path[:i] + path[i:j][::-1] + path[j:]
+                if total_distance(new_path, dist_matrix) < total_distance(path, dist_matrix):
+                    path = new_path
+                    improved = True
+    return path
 
----
+def total_distance(path, dist_matrix):
+    return sum(dist_matrix[path[i]][path[i+1]] for i in range(len(path)-1)) + dist_matrix[path[-1]][path[0]]
+import csv, json
+from collections import namedtuple
+from distance import haversine
+from tsp_solver import greedy_tour, two_opt, total_distance
 
-## 📁 Input Format
+Place = namedtuple("Place", ["name", "lat", "lon"])
 
-### `places.csv`
+def read_places(csv_file):
+    with open(csv_file) as f:
+        reader = csv.DictReader(f)
+        return [Place(row["Name"], float(row["Lat"]), float(row["Lon"])) for row in reader]
 
-```csv
-Name,Lat,Lon
-Eiffel Tower,48.8584,2.2945
-Louvre Museum,48.8606,2.3376
-Notre-Dame,48.8529,2.3500
-Arc de Triomphe,48.8738,2.2950
+def build_matrix(places):
+    return [[haversine(p1.lat, p1.lon, p2.lat, p2.lon) for p2 in places] for p1 in places]
+
+def export_geojson(places, path, filename="route.geojson"):
+    coords = [[places[i].lon, places[i].lat] for i in path] + [[places[path[0]].lon, places[path[0]].lat]]
+    geojson = {
+        "type": "FeatureCollection",
+        "features": [{
+            "type": "Feature",
+            "geometry": {
+                "type": "LineString",
+                "coordinates": coords
+            },
+            "properties": {}
+        }]
+    }
+    with open(filename, "w") as f:
+        json.dump(geojson, f)
